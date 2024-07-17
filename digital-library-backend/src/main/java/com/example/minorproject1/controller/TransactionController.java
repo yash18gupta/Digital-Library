@@ -20,7 +20,7 @@ public class TransactionController {
     TransactionService transactionService;
 
     @PostMapping("/issue")
-//    @PreAuthorize("hasAuthority('student')")
+    @PreAuthorize("hasAuthority('student')")
     public String issueTxn(@RequestParam("name") String name) throws Exception {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         SecuredUser securedUser = (SecuredUser) authentication.getPrincipal();

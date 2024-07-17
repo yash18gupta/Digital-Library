@@ -41,6 +41,7 @@ public class BookController {
         FileData fileData = null;
         String downloadURl = "";
         fileData = bookService.createBook(createBookResponse).getFileData();
+
         downloadURl = ServletUriComponentsBuilder.fromCurrentContextPath()
                 .path("/download/")
                 .path(fileData.getId())

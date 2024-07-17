@@ -7,6 +7,7 @@ import com.example.minorproject1.model.Transaction;
 import com.example.minorproject1.model.enums.TransactionStatus;
 import com.example.minorproject1.model.enums.TransactionType;
 import com.example.minorproject1.repository.TransactionRepository;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -25,7 +26,7 @@ public class TransactionService {
     @Autowired
     BookService bookService;
 
-    private static final int maxBooksForIssuance=3;
+    private static final int maxBooksForIssuance = 3;
 
     @Value("${student.issue.number_of_days}")
     private int numberOfDaysForIssuance;
@@ -33,29 +34,31 @@ public class TransactionService {
     @Autowired
     TransactionRepository transactionRepository;
 
-    public String issueTxn(String bookName,int studentId) throws Exception{
-
+    public String issueTxn(String bookName, int studentId) throws Exception {
         List<Book> bookList;
-
         try {
-            bookList = bookService.getAllAvailable(Optional.ofNullable(bookName), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
-        }
-        catch (Exception e){
-            throw new Exception("Book not found");
+            bookList = bookService.getAllBooksAvailableForIssue(bookName);
+        } catch (Exception e) {
+            throw new Exception("Not able to fetch the book at this moment!", e);
         }
 
-        Student student = studentService.getStudent(studentId);
+        if (bookList.isEmpty()) {
+            throw new Exception("Requested Book is not available!");
+        }
 
-        if(student.getPrimeTransactionDetails()==null){
+        Student student;
+        try {
+            student = studentService.getStudent(studentId);
+        } catch (Exception e) {
+            throw new Exception("Unable to fetch the student!", e);
+        }
+
+        if (student.getPrimeTransactionDetails() == null) {
             throw new Exception("Not eligible - Become a prime member");
         }
 
-        if(student.getBookList() != null && student.getBookList().size()>=maxBooksForIssuance){
-           throw new Exception("Book limit reached");
-        }
-
-        if(bookList.isEmpty()){
-            throw new Exception("Not able to find any book in the library");
+        if (student.getBookList() != null && student.getBookList().size() >= maxBooksForIssuance) {
+            throw new Exception("Book limit reached");
         }
 
         Book book = bookList.get(0);
@@ -68,46 +71,58 @@ public class TransactionService {
                 .transactionStatus(TransactionStatus.PENDING)
                 .build();
 
-        transaction = transactionRepository.save(transaction);
-
-
         try {
-            book.setStudent(student);
-            bookService.assignBookToStudent(book, student);
-
-            transaction.setTransactionStatus(TransactionStatus.SUCCESS);
-        }catch (Exception e){
-            e.printStackTrace();
-            transaction.setTransactionStatus(TransactionStatus.FAILED);
-        }finally {
-            return transactionRepository.save(transaction).getExternalTxnId();
+            transaction = transactionRepository.save(transaction);
+        } catch (Exception e) {
+            throw new Exception("Error in saving transaction!", e);
         }
 
+        try {
+            issueBook(book, student, transaction);
+            transaction.setTransactionStatus(TransactionStatus.SUCCESS);
+        } catch (Exception e) {
+            transaction.setTransactionStatus(TransactionStatus.FAILED);
+            transactionRepository.save(transaction);
+            throw new Exception("Failed to issue the book", e);
+        } finally {
+            transactionRepository.save(transaction);
+        }
+
+        return transaction.getExternalTxnId();
     }
+
+    @Transactional
+    public void issueBook(Book book, Student student, Transaction transaction) throws Exception {
+        book.setStudent(student);
+        bookService.assignBookToStudent(book, student);
+    }
+
 
     public String returnTxn(int bookId, int studentId) throws Exception {
         Book book;
         try {
             book = this.bookService.getBookById(bookId);
-        }catch (Exception e){
-            throw new Exception("not able to fetch book details");
+        } catch (Exception e) {
+            throw new Exception("Not able to fetch book details", e);
         }
 
-        // Validation
-        if(book.getStudent() == null || book.getStudent().getId() != studentId){
+        if (book == null) {
+            throw new Exception("Error in fetching book!");
+        }
+
+        if (book.getStudent() == null || book.getStudent().getId() != studentId) {
             throw new Exception("Book is not assigned to this student");
         }
 
         Student student;
-        try{
+        try {
             student = this.studentService.getStudent(studentId);
-        }
-        catch (Exception e){
-            throw new Exception("Error in student authentication");
+        } catch (Exception e) {
+            throw new Exception("Error in fetching student!", e);
         }
 
-        if(student==null){
-            throw  new Exception("Student not found");
+        if (student == null) {
+            throw new Exception("Student not found!");
         }
 
         Transaction transaction = Transaction.builder()
@@ -118,39 +133,67 @@ public class TransactionService {
                 .transactionStatus(TransactionStatus.PENDING)
                 .build();
 
-        transaction = transactionRepository.save(transaction);
+        try {
+            transaction = transactionRepository.save(transaction);
+        } catch (Exception e) {
+            throw new Exception("Error in saving return book transaction", e);
+        }
 
-        // Get the corresponding issue Txn
+        Transaction issueTransaction;
+        try {
+            List<Transaction> issueTransactions =
+                    this.transactionRepository.findByStudentAndBookAndTransactionTypeAndTransactionStatusOrderByTransactionTime
+                            (student, book, TransactionType.ISSUE, TransactionStatus.SUCCESS);
 
-        Transaction issueTransaction = this.transactionRepository.findTopByStudentAndBookAndTransactionTypeAndTransactionStatusOrderByTransactionTimeDesc(student, book, TransactionType.ISSUE, TransactionStatus.SUCCESS);
+            issueTransaction = findUnpairedIssueTransaction(issueTransactions);
+
+        } catch (Exception e) {
+            transaction.setTransactionStatus(TransactionStatus.FAILED);
+            transactionRepository.save(transaction);
+            throw new Exception("Error in fetching issue transaction", e);
+        }
 
         // Fine calculation
         long issueTxnInMillis = issueTransaction.getTransactionTime().getTime();
-
         long currentTimeMillis = System.currentTimeMillis();
-
         long timeDifferenceInMillis = currentTimeMillis - issueTxnInMillis;
-
         long timeDifferenceInDays = TimeUnit.DAYS.convert(timeDifferenceInMillis, TimeUnit.MILLISECONDS);
 
         Double fine = 0.0;
-        if(timeDifferenceInDays > numberOfDaysForIssuance){
+        if (timeDifferenceInDays > numberOfDaysForIssuance) {
             fine = (timeDifferenceInDays - numberOfDaysForIssuance) * 1.0;
         }
 
         try {
-
-            book.setStudent(null);
-            this.bookService.unassignBookFromStudent(book);
-
+            unassignBook(book);
             transaction.setTransactionStatus(TransactionStatus.SUCCESS);
-        }catch (Exception e){
-            e.printStackTrace();
+        } catch (Exception e) {
             transaction.setTransactionStatus(TransactionStatus.FAILED);
-        }finally {
+            transactionRepository.save(transaction);
+            throw new Exception("Failed to return the book", e);
+        } finally {
             transaction.setFine(fine);
-            return transactionRepository.save(transaction).getExternalTxnId();
+            transactionRepository.save(transaction);
         }
+
+        return transaction.getExternalTxnId();
+    }
+
+    @Transactional
+    public void unassignBook(Book book) {
+        book.setStudent(null);
+        this.bookService.unassignBookFromStudent(book);
+    }
+
+    public Transaction findUnpairedIssueTransaction(List<Transaction> issueTransactions){
+        for(Transaction issueTransaction : issueTransactions){
+            boolean isPaired = transactionRepository.existsByBookAndStudentAndTransactionTypeAndTransactionStatusAndTransactionTimeAfter(
+                    issueTransaction.getBook(), issueTransaction.getStudent(), TransactionType.RETURN, TransactionStatus.SUCCESS, issueTransaction.getTransactionTime());
+            if (!isPaired) {
+                return issueTransaction;
+            }
+        }
+        return null;
     }
 
     public List<Transaction> getAllTxn(int id) {

@@ -15,12 +15,13 @@ public class FileService {
 
     public FileData saveAttachment(MultipartFile file) throws Exception {
         String fileName = StringUtils.cleanPath(file.getOriginalFilename());
-        try {
-            if(fileName.contains("..")) {
-                throw  new Exception("Filename contains invalid path sequence "
-                        + fileName);
-            }
 
+        if(fileName.contains("..")) {
+            throw  new Exception("Filename contains invalid path sequence "
+                    + fileName);
+        }
+
+        try {
             FileData fileData = FileData.builder()
                     .name(fileName)
                     .type(file.getContentType())

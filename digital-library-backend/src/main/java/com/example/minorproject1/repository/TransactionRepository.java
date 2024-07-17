@@ -8,6 +8,7 @@ import com.example.minorproject1.model.enums.TransactionType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Date;
 import java.util.List;
 
 public interface TransactionRepository extends JpaRepository<Transaction,Integer> {
@@ -18,4 +19,9 @@ public interface TransactionRepository extends JpaRepository<Transaction,Integer
 
     @Query("select t from Transaction as t where t.student.id = ?1")
     List<Transaction> getAllTxn(int id);
+
+    List<Transaction> findByStudentAndBookAndTransactionTypeAndTransactionStatusOrderByTransactionTime(Student student, Book book, TransactionType transactionType, TransactionStatus transactionStatus);
+
+    boolean existsByBookAndStudentAndTransactionTypeAndTransactionStatusAndTransactionTimeAfter(Book book, Student student, TransactionType transactionType, TransactionStatus transactionStatus, Date transactionTime);
+
 }

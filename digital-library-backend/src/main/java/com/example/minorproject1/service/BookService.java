@@ -77,6 +77,10 @@ public class BookService {
         );
     }
 
+    public List<Book> getAllBooksAvailableForIssue(String bookName){
+        return bookRepository.getAllBooksAvailableForIssue(bookName);
+    }
+
     public void assignBookToStudent(Book book, Student student) {
         bookRepository.assignBookToStudent(book.getId(), student);
     }

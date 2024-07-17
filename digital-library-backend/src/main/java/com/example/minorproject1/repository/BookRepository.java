@@ -30,17 +30,19 @@ public interface BookRepository extends JpaRepository<Book,Integer> {
                                @Param("maxPages")Integer maxPages
     );
 
-    @Modifying // for DML support
-    @Transactional // for updating any data
+    @Modifying
+    @Transactional
     @Query("update Book b set b.student = ?2 where b.id = ?1 and b.student is null")
     void assignBookToStudent(int bookId, Student student);
 
-    @Modifying // for DML support
-    @Transactional // for updating any data
+    @Modifying
+    @Transactional
     @Query("update Book b set b.student = null where b.id = ?1 ")
     void unassignBook(int bookId);
 
     @Query("SELECT b FROM Book b where b.student IS NULL")
     List<Book> getAvailableBook();
 
+    @Query("select b from Book b where b.name = ?1 and b.student is null")
+    List<Book> getAllBooksAvailableForIssue(String bookName);
 }
