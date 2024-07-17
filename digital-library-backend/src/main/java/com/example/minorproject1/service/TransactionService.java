@@ -141,12 +141,8 @@ public class TransactionService {
 
         Transaction issueTransaction;
         try {
-            List<Transaction> issueTransactions =
-                    this.transactionRepository.findByStudentAndBookAndTransactionTypeAndTransactionStatusOrderByTransactionTime
-                            (student, book, TransactionType.ISSUE, TransactionStatus.SUCCESS);
-
-            issueTransaction = findUnpairedIssueTransaction(issueTransactions);
-
+            issueTransaction = this.transactionRepository.findTopByStudentAndBookAndTransactionTypeAndTransactionStatusOrderByTransactionTimeDesc(
+                    student, book, TransactionType.ISSUE, TransactionStatus.SUCCESS);
         } catch (Exception e) {
             transaction.setTransactionStatus(TransactionStatus.FAILED);
             transactionRepository.save(transaction);
@@ -185,16 +181,6 @@ public class TransactionService {
         this.bookService.unassignBookFromStudent(book);
     }
 
-    public Transaction findUnpairedIssueTransaction(List<Transaction> issueTransactions){
-        for(Transaction issueTransaction : issueTransactions){
-            boolean isPaired = transactionRepository.existsByBookAndStudentAndTransactionTypeAndTransactionStatusAndTransactionTimeAfter(
-                    issueTransaction.getBook(), issueTransaction.getStudent(), TransactionType.RETURN, TransactionStatus.SUCCESS, issueTransaction.getTransactionTime());
-            if (!isPaired) {
-                return issueTransaction;
-            }
-        }
-        return null;
-    }
 
     public List<Transaction> getAllTxn(int id) {
         return transactionRepository.getAllTxn(id);

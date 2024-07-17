@@ -20,8 +20,5 @@ public interface TransactionRepository extends JpaRepository<Transaction,Integer
     @Query("select t from Transaction as t where t.student.id = ?1")
     List<Transaction> getAllTxn(int id);
 
-    List<Transaction> findByStudentAndBookAndTransactionTypeAndTransactionStatusOrderByTransactionTime(Student student, Book book, TransactionType transactionType, TransactionStatus transactionStatus);
-
-    boolean existsByBookAndStudentAndTransactionTypeAndTransactionStatusAndTransactionTimeAfter(Book book, Student student, TransactionType transactionType, TransactionStatus transactionStatus, Date transactionTime);
 
 }
